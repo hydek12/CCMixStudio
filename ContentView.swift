@@ -549,7 +549,7 @@ struct ContentView: View {
         let payload = entry.payload
         let crc = entry.crcID
 
-        Task.detached(priority: .userInitiated) {
+        Task(priority: .userInitiated) {
             do {
                 let parsed = try WestwoodMixEngine.parse(
                     data: payload,
@@ -597,7 +597,7 @@ struct ContentView: View {
 
         if panel.runModal() == .OK, let folderURL = panel.url {
             isLoading = true
-            Task.detached(priority: .userInitiated) {
+            Task(priority: .userInitiated) {
                 do {
                     let count = try WestwoodMixEngine.batchExtract(entries: entriesToExtract, to: folderURL)
                     await MainActor.run {
@@ -626,9 +626,9 @@ struct ContentView: View {
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         for provider in providers {
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                guard let data = item as? Data,
-                      let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+            provider.loadObject(ofClass: NSURL.self) { item, _ in
+                guard let fileURL = item as? NSURL else { return }
+                let url = fileURL as URL
                 DispatchQueue.main.async {
                     loadURLs([url])
                 }
@@ -640,7 +640,7 @@ struct ContentView: View {
     private func loadURLs(_ urls: [URL]) {
         errorMessage = nil
         isLoading = true
-        Task.detached(priority: .userInitiated) {
+        Task(priority: .userInitiated) {
             var loaded: [LoadedMixArchive] = []
             var firstError: String?
 
@@ -653,15 +653,18 @@ struct ContentView: View {
                 }
             }
 
+            let loadedArchives = loaded
+            let loadError = firstError
+
             await MainActor.run {
-                for item in loaded {
+                for item in loadedArchives {
                     archives.append(item)
                     if (item.variant == .redAlertTS || item.variant == .redAlertTSEncrypted) && archives.count == 1 {
                         useRAHeaderFlag = true
                     }
                 }
                 dictionaryRevision += 1
-                if let err = firstError {
+                if let err = loadError {
                     errorMessage = err
                 }
                 isLoading = false

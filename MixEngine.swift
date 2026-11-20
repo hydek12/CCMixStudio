@@ -1416,7 +1416,7 @@ struct WestwoodAudioDecoder {
 
 // MARK: - Models & Archive Engine
 
-enum MixFormatVariant: String {
+enum MixFormatVariant: String, Sendable {
     case tiberianDawn = "Tiberian Dawn (Classic)"
     case redAlertTS = "Red Alert / TS / RA2"
     case redAlertTSEncrypted = "Red Alert / TS / RA2 (Decrypted)"
@@ -1430,7 +1430,7 @@ enum DuplicateStrategy: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct MixEntry: Identifiable {
+struct MixEntry: Identifiable, Sendable {
     var id: String { "\(sourceArchive)_\(crcID)_\(originalOffset)" }
     let crcID: UInt32
     let originalOffset: UInt32
@@ -1501,7 +1501,7 @@ struct MixEntry: Identifiable {
     }
 }
 
-struct LoadedMixArchive: Identifiable {
+struct LoadedMixArchive: Identifiable, Sendable {
     let id = UUID()
     let fileName: String
     let fileSize: Int
