@@ -1,0 +1,2 @@
+# CCMixStudio
+Native macOS SwiftUI archive manager and asset inspector for Westwood Studios .MIX files (Command & Conquer: Tiberian Dawn, Red Alert, Tiberian Sun, Red Alert 2), featuring RSA/Blowfish decryption, nested .MIX expansion/unexpansion, archive merging, .SHP sprite animation & PNG sprite sheet export, .AUD / .VQA SND2 audio playback & WAV export, .VQA video frame inspection, and XCC filename database support.
