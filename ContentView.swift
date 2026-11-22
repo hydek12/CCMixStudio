@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var audioPlayer: AVAudioPlayer?
     @State private var isPlayingAudio: Bool = false
     @State private var dictionaryRevision: Int = 0
+    @State private var didApplyLaunchConfig: Bool = false
 
     var previewMerge: (data: Data, mergedEntries: [MixEntry], duplicatesResolved: Int) {
         _ = dictionaryRevision
@@ -440,6 +441,29 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
         }
+        .onAppear {
+            applyLaunchConfigurationIfNeeded()
+        }
+    }
+
+    private func applyLaunchConfigurationIfNeeded() {
+        guard !didApplyLaunchConfig else { return }
+        didApplyLaunchConfig = true
+        let config = AppLaunchConfiguration.shared
+        duplicateStrategy = config.duplicateStrategy
+        if let flag = config.useRAHeaderFlag {
+            useRAHeaderFlag = flag
+        }
+        for namePath in config.nameDatabasePaths {
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: namePath)) {
+                WestwoodNameDatabase.shared.importDatabaseBlob(data)
+            }
+        }
+        dictionaryRevision += 1
+        if !config.inputPaths.isEmpty {
+            let urls = config.inputPaths.map { URL(fileURLWithPath: $0) }
+            loadURLs(urls, expandNested: config.expandNested, preserveHeaderFlag: config.useRAHeaderFlag != nil)
+        }
     }
 
     private func typeColor(for entry: MixEntry) -> Color {
@@ -637,7 +661,7 @@ struct ContentView: View {
         return true
     }
 
-    private func loadURLs(_ urls: [URL]) {
+    private func loadURLs(_ urls: [URL], expandNested: Bool = false, preserveHeaderFlag: Bool = false) {
         errorMessage = nil
         isLoading = true
         Task(priority: .userInitiated) {
@@ -653,13 +677,22 @@ struct ContentView: View {
                 }
             }
 
+            if expandNested && !loaded.isEmpty {
+                do {
+                    let expanded = try MixCombineEngine.expandNestedArchives(in: loaded, keepContainers: true)
+                    loaded = expanded.archives
+                } catch {
+                    firstError = firstError ?? error.localizedDescription
+                }
+            }
+
             let loadedArchives = loaded
             let loadError = firstError
 
             await MainActor.run {
                 for item in loadedArchives {
                     archives.append(item)
-                    if (item.variant == .redAlertTS || item.variant == .redAlertTSEncrypted) && archives.count == 1 {
+                    if !preserveHeaderFlag && (item.variant == .redAlertTS || item.variant == .redAlertTSEncrypted) && archives.count == 1 {
                         useRAHeaderFlag = true
                     }
                 }
@@ -916,10 +949,7 @@ struct SHPSpritePreview: View {
     }
     
     private func exportSpriteSheetPNG(sprite: DecodedSHPSprite) {
-        guard let nsImage = sprite.renderSpriteSheet(palette768: activePaletteData),
-              let tiffData = nsImage.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        guard let pngData = sprite.spriteSheetPNGData(palette768: activePaletteData) else {
             return
         }
         let baseName = (entry.knownName as NSString?)?.deletingPathExtension ?? entry.hexID
@@ -931,10 +961,7 @@ struct SHPSpritePreview: View {
     }
 
     private func exportCurrentFramePNG(sprite: DecodedSHPSprite) {
-        guard let nsImage = sprite.renderFrame(frameIndex, palette768: activePaletteData),
-              let tiffData = nsImage.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        guard let pngData = sprite.pngData(forFrame: frameIndex, palette768: activePaletteData) else {
             return
         }
         let baseName = (entry.knownName as NSString?)?.deletingPathExtension ?? entry.hexID

@@ -230,11 +230,30 @@ final class WestwoodNameDatabase {
     var count: Int { namesByCRC.count }
 
     private init() {
-        register(names: Self.builtInNames)
+        registerExact(names: Self.builtInNames)
     }
 
     func lookup(_ crc: UInt32) -> String? {
         namesByCRC[crc]
+    }
+
+    func allEntries() -> [UInt32: String] {
+        namesByCRC
+    }
+
+    @discardableResult
+    func registerExact(names: [String]) -> Int {
+        var added = 0
+        for raw in names {
+            let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty, !cleaned.hasPrefix(";"), !cleaned.hasPrefix("#") else { continue }
+            let crc = WestwoodMixEngine.westwoodCRC(filename: cleaned)
+            if namesByCRC[crc] == nil {
+                added += 1
+            }
+            namesByCRC[crc] = cleaned.uppercased()
+        }
+        return added
     }
 
     @discardableResult
@@ -243,8 +262,13 @@ final class WestwoodNameDatabase {
         for raw in names {
             let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty, !cleaned.hasPrefix(";"), !cleaned.hasPrefix("#") else { continue }
-            let parts = cleaned.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "=" })
-            let candidate = String(parts.last ?? "")
+            let candidate: String
+            if cleaned.caseInsensitiveCompare("local mix database.dat") == .orderedSame {
+                candidate = cleaned
+            } else {
+                let parts = cleaned.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "=" })
+                candidate = String(parts.last ?? "")
+            }
             guard !candidate.isEmpty else { continue }
             let crc = WestwoodMixEngine.westwoodCRC(filename: candidate)
             if namesByCRC[crc] == nil {
@@ -273,7 +297,7 @@ final class WestwoodNameDatabase {
                     current.append(byte)
                 }
             }
-            return register(names: extracted)
+            return registerExact(names: extracted)
         }
 
         let text = String(data: data, encoding: .utf8)
@@ -459,6 +483,30 @@ struct DecodedSHPSprite {
         }
 
         return NSImage(cgImage: cgImage, size: NSSize(width: sheetWidth, height: sheetHeight))
+    }
+
+    func pngData(forFrame index: Int, palette768: Data) -> Data? {
+        guard let nsImage = renderFrame(index, palette768: palette768) else { return nil }
+        return Self.encodePNG(nsImage)
+    }
+
+    func spriteSheetPNGData(palette768: Data, columns: Int? = nil) -> Data? {
+        guard let nsImage = renderSpriteSheet(palette768: palette768, columns: columns) else { return nil }
+        return Self.encodePNG(nsImage)
+    }
+
+    static func encodePNG(_ image: NSImage) -> Data? {
+        if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            let rep = NSBitmapImageRep(cgImage: cgImage)
+            if let data = rep.representation(using: .png, properties: [:]) {
+                return data
+            }
+        }
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData) else {
+            return nil
+        }
+        return bitmap.representation(using: .png, properties: [:])
     }
 
 }
@@ -903,6 +951,11 @@ struct WestwoodAudioDecoder {
             }
 
             return NSImage(cgImage: cgImage, size: NSSize(width: width, height: height))
+        }
+
+        func pngData(forFrame index: Int, vqaData: Data) -> Data? {
+            guard let nsImage = renderFrame(index, vqaData: vqaData) else { return nil }
+            return DecodedSHPSprite.encodePNG(nsImage)
         }
 
         private func nearestPalette(for frameIdx: Int) -> [UInt8] {
